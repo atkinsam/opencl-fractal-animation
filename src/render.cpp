@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
 
 
     /* size of image */
-    size_t size = 200;
+    size_t size = 300;
 
     /* get available OpenCL platforms */
     std::vector<cl::Platform> all_platforms;
@@ -181,7 +181,6 @@ int main(int argc, char* argv[])
     /* create command queue */
     cl::CommandQueue queue(context, device);
 
-    
     /* create origin and region locations */
     cl::size_t<3> origin;
     origin[0] = 0;
@@ -196,7 +195,12 @@ int main(int argc, char* argv[])
     err = queue.enqueueFillImage(image, color_init, origin, region);
 
     /* add kernel to queue */
-    err = queue.enqueueTask(kernel);
+    err = queue.enqueueNDRangeKernel(kernel, 
+                                     cl::NullRange, 
+                                     cl::NDRange(2, 2), 
+                                     cl::NullRange,
+                                     NULL,
+                                     NULL);
     if (err != CL_SUCCESS)
     {
         std::cerr << "Could not execute kernel: " << std::endl;
@@ -210,15 +214,9 @@ int main(int argc, char* argv[])
         std::cerr << "Queue could not finish execution" << std::endl;
         return EXIT_FAILURE;
     }
-    
-    /* read finished image */
+   
+    /* read finished image from device memory */ 
     uint8_t* result = new uint8_t[size * size * 4];
-    /* initialize to zeros */
-    for (unsigned int i = 0; i < size; i++)
-    {
-        result[i] = (uint8_t)0;
-    }
-    
     err = queue.enqueueReadImage(image, CL_TRUE, origin, region, 0, 0, result,
                            NULL, NULL);
     if (err != CL_SUCCESS)
@@ -230,7 +228,8 @@ int main(int argc, char* argv[])
     {
         std::cout << "Successfully read image to host memory" << std::endl;
     }
-
+    
+    /* convert from array to vector for lodepng */
     std::vector<unsigned char> output;
     output.resize(size * size * 4);
     for (unsigned int i = 0; i < size * size * 4; i++)
@@ -238,6 +237,7 @@ int main(int argc, char* argv[])
         output[i] = (unsigned char)result[i];
     }
 
+    /* export image to png */
     unsigned image_error = lodepng::encode("test.png", output, size, size);
     if (image_error)
     {

@@ -1,13 +1,35 @@
 void kernel render_image(__write_only image2d_t image, int size)
 {
-    uint4 somecolor = {0, 255, 0, 100};
-    int i, j;
-    for (i = 0; i < size; i++)
+    
+    size_t gid_x = get_global_id(0);
+    size_t gid_y = get_global_id(1);    
+
+    size_t lx = get_local_id(0);
+    size_t ly = get_local_id(1);
+
+    printf("[x: %d, y: %d]\t[lx: %d, ly: %d]\n", (int)gid_x, (int)gid_y, (int)lx, (int)ly);
+
+    uint4 somecolor;
+    if (gid_x == 0 && gid_y == 0)
+        somecolor = (uint4){255, 0, 0, 255};
+    if (gid_x == 0 && gid_y == 1)
+        somecolor = (uint4){0, 255, 0, 255};
+    if (gid_x == 1 && gid_y == 0)
+        somecolor = (uint4){0, 0, 255, 255};
+    if (gid_x == 1 && gid_y == 1)
+        somecolor = (uint4){255, 255, 255, 255};
+
+    int x_start = gid_x * (size/2);
+    int x_end   = x_start + (size/2);
+    int y_start = gid_y * (size/2);
+    int y_end   = y_start + (size/2);
+
+    int i_x, i_y;
+    for (i_x = x_start; i_x < x_end; i_x++)
     {
-        for (j = 50; j < size - 50; j++)
+        for (i_y = y_start; i_y < y_end; i_y++)
         {
-            int2 pos = {i, j};
-            write_imageui(image, pos, somecolor);
+            write_imageui(image, (int2){i_x, i_y}, somecolor);
         }
     }
 }
