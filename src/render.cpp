@@ -22,6 +22,9 @@
 #endif
 
 
+cl_uint4* colormap(std::string filename, unsigned int* size);
+
+
 int main(int argc, char* argv[])
 {
     /* OpenCL variables */
@@ -29,7 +32,7 @@ int main(int argc, char* argv[])
 
 
     /* size of image */
-    size_t size = 800;
+    size_t size = 3000;
 
     /* get available OpenCL platforms */
     std::vector<cl::Platform> all_platforms;
@@ -180,6 +183,20 @@ int main(int argc, char* argv[])
 
     cl_uint4 color_init = {{255, 255, 255, 255}};
 
+    /* create colormap */
+    unsigned int cmap_size;
+    cl_uint4* cmap = colormap("colormaps/cool.png", &cmap_size);
+    cl::Buffer cmap_buf(context, 
+                        CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                        sizeof(cl_uint4) * cmap_size,
+                        cmap,
+                        &err);
+    if (err != CL_SUCCESS)
+    {
+        std::cerr << "Could not create colormap buffer" << std::endl;
+        return EXIT_FAILURE;
+    }
+
     /* create kernels from program */
     cl::Buffer buffer_re(context, CL_MEM_READ_WRITE, sizeof(float) * size);
     cl::Buffer buffer_im(context, CL_MEM_READ_WRITE, sizeof(float) * size);
@@ -188,8 +205,10 @@ int main(int argc, char* argv[])
     render_kernel.setArg(0, image);
     render_kernel.setArg(1, buffer_re);
     render_kernel.setArg(2, buffer_im);
-    render_kernel.setArg(3, frac_c_re);
-    render_kernel.setArg(4, frac_c_im);
+    render_kernel.setArg(3, cmap_buf);
+    render_kernel.setArg(4, cmap_size);
+    render_kernel.setArg(5, frac_c_re);
+    render_kernel.setArg(6, frac_c_im);
 
     cl::Kernel spaced_re_kernel(program, "even_re");
     spaced_re_kernel.setArg(0, frac_center_re);
@@ -231,6 +250,12 @@ int main(int argc, char* argv[])
     {
         std::cerr << "Could not compute spaced imaginary values" << std::endl;
         return EXIT_FAILURE;
+    }
+
+    err = queue.finish();
+    if (err != CL_SUCCESS)
+    {
+        std::cerr << "Could not finish queue before render" << std::endl;
     }
 
     /* add kernel to queue */
@@ -282,8 +307,8 @@ int main(int argc, char* argv[])
     unsigned image_error = lodepng::encode("test.png", output, size, size);
     if (image_error)
     {
-        std::cout << "Image encoding error: " << lodepng_error_text(image_error);
-        std::cout << std::endl;
+        std::cout << "Image encoding error: ";
+        std::cout << lodepng_error_text(image_error) << std::endl;
         return EXIT_SUCCESS;
     }
 
@@ -291,4 +316,21 @@ int main(int argc, char* argv[])
     platform.unloadCompiler();
 
     return EXIT_SUCCESS;
+}
+
+cl_uint4* colormap(std::string filename, unsigned int* size)
+{
+    std::vector<unsigned char> image;
+    unsigned int width, height;
+    lodepng::decode(image, width, height, filename.c_str());
+    cl_uint4* cmap = new cl_uint4[width]; 
+    for (unsigned int i = 0; i < width; i++)
+    {
+        cmap[i] = {{image[i * 4 + 0],
+                    image[i * 4 + 1],
+                    image[i * 4 + 2],
+                    255}};
+    }
+    *size = width;
+    return cmap;
 }

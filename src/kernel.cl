@@ -63,6 +63,8 @@ void kernel even_im(float center_im,
 void kernel render_image(__write_only image2d_t image, 
                          global const float* spaced_re,
                          global const float* spaced_im,
+                         global const uint4* cmap,
+                         unsigned int cmap_size,
                          float c_re,
                          float c_im)
 {
@@ -76,8 +78,7 @@ void kernel render_image(__write_only image2d_t image,
         z = c_add(c_multiply(z, z), c);
         depth--;
     }
-
-    uint4 color = (uint4)(depth, depth, depth, 255);
-
-    write_imageui(image, pos, color);
+    unsigned int color_index = (float)(depth - 0) /
+                               (float)(255 - 0) * cmap_size;
+    write_imageui(image, pos, cmap[color_index]);
 }
