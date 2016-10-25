@@ -29,11 +29,40 @@ inline Complex c_add(Complex a, Complex b)
     return (Complex)(a.x + b.x, a.y + b.y);
 }
 
+/* compute evenly spaced real values */
+void kernel even_re(float center_re,
+                    float zoom,
+                    float size,
+                    global float* out)
+{
+    float min = center_re - zoom / 2.0;
+    float max = center_re + zoom / 2.0;
+    float interval = (max - min) / size;
+    for (unsigned int i = 0; i < (unsigned int)size; i++)
+    {
+        out[i] = min + interval * i;
+    }
+}
+
+/* compute evenly spaced imaginary values */
+void kernel even_im(float center_im,
+                    float zoom,
+                    float size,
+                    global float* out)
+{
+    float min = center_im - zoom / 2.0;
+    float max = center_im + zoom / 2.0;
+    float interval = (max - min) / size;
+    for (unsigned int i = 0; i < (unsigned int)size; i++)
+    {
+        out[i] = min + interval * i;
+    }
+}
 
 /* compute the depth of one pixel of a fractal image */
 void kernel render_image(__write_only image2d_t image, 
-                         __constant float* spaced_re,
-                         __constant float* spaced_im,
+                         global const float* spaced_re,
+                         global const float* spaced_im,
                          float c_re,
                          float c_im)
 {
