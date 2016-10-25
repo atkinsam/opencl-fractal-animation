@@ -29,7 +29,7 @@ int main(int argc, char* argv[])
 
 
     /* size of image */
-    size_t size = 300;
+    size_t size = 8194;
 
     /* get available OpenCL platforms */
     std::vector<cl::Platform> all_platforms;
@@ -118,6 +118,49 @@ int main(int argc, char* argv[])
 
     /* tell the user we are starting execution */
     std::cout << "STARTING EXECUTION" << std::endl;
+
+    /* choose parameters for fractal */
+    static float frac_center_re = 0.0;
+    static float frac_center_im = 0.0;
+    static float frac_zoom = 1.0;
+    static float frac_c_re = 0.0;
+    static float frac_c_im = 0.68;
+
+    /* create buffer for real values */
+    float min_re = frac_center_re - (float)frac_zoom / 2.0;
+    float max_re = frac_center_re + (float)frac_zoom / 2.0;
+    float interval_re = (max_re - min_re) / (float)size;
+    float spaced_re[size];
+    for (unsigned int i = 0; i < size; i++)
+        spaced_re[i] = min_re + i * interval_re;
+    cl::Buffer buffer_re(context, 
+                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                         (size_t)size * sizeof(float),
+                         spaced_re,
+                         &err);
+    if (err != CL_SUCCESS)
+    {
+        std::cerr << "Did not successfully fill real buffer" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    /* create buffer for imaginary values */
+    float min_im = frac_center_im - (float)frac_zoom / 2.0;
+    float max_im = frac_center_im + (float)frac_zoom / 2.0;
+    float interval_im = (max_im - min_im) / (float)size;
+    float spaced_im[size];
+    for (unsigned int i = 0; i < size; i++)
+        spaced_im[i] = min_im + i * interval_im;
+    cl::Buffer buffer_im(context, 
+                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+                         (size_t)size * sizeof(float),
+                         spaced_im,
+                         &err);
+    if (err != CL_SUCCESS)
+    {
+        std::cerr << "Did not successfully fill imaginary buffer" << std::endl;
+        return EXIT_FAILURE;
+    }
   
     /* initialize image as type RGBA with each element having size 8 bytes */ 
     cl::ImageFormat image_format(CL_RGBA, CL_UNSIGNED_INT8);
@@ -176,7 +219,10 @@ int main(int argc, char* argv[])
     /* create kernel from program */
     cl::Kernel kernel(program, "render_image");
     kernel.setArg(0, image);
-    kernel.setArg(1, (int)size);
+    kernel.setArg(1, buffer_re);
+    kernel.setArg(2, buffer_im);
+    kernel.setArg(3, frac_c_re);
+    kernel.setArg(4, frac_c_im);
 
     /* create command queue */
     cl::CommandQueue queue(context, device);
@@ -197,7 +243,7 @@ int main(int argc, char* argv[])
     /* add kernel to queue */
     err = queue.enqueueNDRangeKernel(kernel, 
                                      cl::NullRange, 
-                                     cl::NDRange(2, 2), 
+                                     cl::NDRange(size, size), 
                                      cl::NullRange,
                                      NULL,
                                      NULL);
@@ -214,6 +260,8 @@ int main(int argc, char* argv[])
         std::cerr << "Queue could not finish execution" << std::endl;
         return EXIT_FAILURE;
     }
+
+    std::cout << "Finished rendering" << std::endl;
    
     /* read finished image from device memory */ 
     uint8_t* result = new uint8_t[size * size * 4];
