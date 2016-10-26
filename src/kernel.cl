@@ -80,5 +80,7 @@ void kernel render_image(__write_only image2d_t image,
     }
     unsigned int color_index = (float)(depth - 0) /
                                (float)(255 - 0) * cmap_size;
+
+    /* uint4 color = (uint4)(depth, depth, depth, 255); */
     write_imageui(image, pos, cmap[color_index]);
 }

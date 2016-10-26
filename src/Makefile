@@ -9,11 +9,8 @@ else
 endif
 
 all: lodepng.o colormap.o render.cpp
-	$(CC) lodepng.o colormap.o render.cpp $(CFLAGS) -o $(OUTFILE)
+	$(CC) lodepng.o render.cpp $(CFLAGS) -o $(OUTFILE)
 
 lodepng.o: lodepng.cpp
 	$(CC) -c lodepng.cpp
-
-colormap.o: colormap.cpp
-	$(CC) -c colormap.cpp
 

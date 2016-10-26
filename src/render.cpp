@@ -9,126 +9,59 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <cstdlib>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <sys/wait.h>
 #include "lodepng.h"
-#ifdef __APPLE__
-#include <OpenCL/cl.hpp>
-#else
-#include <CL/cl.hpp>
-#endif
+#include "opencl_errors.hpp"
 
 
 cl_uint4* colormap(std::string filename, unsigned int* size);
+cl::Platform get_platform(int* m_err);
+cl::Device get_device(cl::Platform* platform, int* m_err);
+cl::Context get_context(cl::Device* device, int* m_err);
+void check_device_info(cl::Device* device, int* m_err);
+void cleanup();
 
 
 int main(int argc, char* argv[])
 {
     /* OpenCL variables */
     cl_int err = CL_SUCCESS;
-
-
-    /* size of image */
-    size_t size = 3000;
-
-    /* get available OpenCL platforms */
-    std::vector<cl::Platform> all_platforms;
-    cl::Platform::get(&all_platforms);
-    if (all_platforms.size() == 0)
+    cl::Platform platform;
+    cl::Device device;
+    cl::Context context;
+    cl::CommandQueue queue;
+    /* main error */
+    int m_err = 0;
+    /* get OpenCL platform layer */
+    platform = get_platform(&m_err);
+    if (err != 0)
     {
-        std::cerr << "No OpenCL platforms found.";
+        cleanup();
         return EXIT_FAILURE;
     }
-    else if (all_platforms.size() > 1)
+    device = get_device(&platform, &m_err);
+    if (err != 0)
     {
-        std::cout << "Found " << all_platforms.size() << " available";
-        std::cout << " OpenCL platforms" << std::endl;
-    }
-    else
-    {
-        std::cout << "Found 1 available OpenCL platform" << std::endl;
-    }
-    cl::Platform platform = all_platforms[0];
-    std::string platform_name = platform.getInfo<CL_PLATFORM_NAME>();
-    std::cout << "\tUsing platform " << platform_name << std::endl;
-
-    /* get available OpenCL devices */
-    std::vector<cl::Device> all_devices;
-    platform.getDevices(CL_DEVICE_TYPE_ALL, &all_devices);
-    if (all_devices.size() == 0)
-    {
-        std::cerr << "No OpenCL devices found.";
+        cleanup();
         return EXIT_FAILURE;
     }
-
-    /* let user choose OpenCL device */
-    int device_num = 0;
-    if (all_devices.size() > 1)
+    context = get_context(&device, &m_err);
+    if (err != 0)
     {
-        std::cout << "Available OpenCL devices:" << std::endl;
-        for (unsigned int i = 0; i < all_devices.size(); i++)
-        {
-            std::string device_name;
-            device_name = all_devices[i].getInfo<CL_DEVICE_NAME>();
-            std::cout << "\t[" << i << "] " << device_name << std::endl;
-        }
-        std::cout << "Device preference: ";
-        std::cin >> device_num;
-    }
-    else
-    {
-        std::cout << "Found 1 available OpenCL device" << std::endl;
-    }
-    cl::Device device = all_devices[device_num];
-    std::string device_name = device.getInfo<CL_DEVICE_NAME>();
-    std::cout << "\tUsing device " << device_name << std::endl;
-
-    /* create OpenCL context on device */
-    cl::Context context({device});
-
-    /* make sure device has OpenCL image support */
-    if (!device.getInfo<CL_DEVICE_IMAGE_SUPPORT>())
-    {
-        std::cerr << "OpenCL device does not have image support";
+        cleanup();
         return EXIT_FAILURE;
     }
-
-    std::cout << "DEVICE INFO:" << std::endl;
-
-    /* check maximum work item dimensions */
-    cl_uint max_work_item_dims;
-    max_work_item_dims = device.getInfo<CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS>();
-    std::cout << "\tMaximum work item dimensions: " << max_work_item_dims;
-    std::cout << std::endl;
-
-    /* check maximum work item sizes */
-    std::vector<long unsigned int> max_work_item_sizes;
-    max_work_item_sizes = device.getInfo<CL_DEVICE_MAX_WORK_ITEM_SIZES>();
-    for (cl_uint i = 0; i < max_work_item_dims; i++)
-    {
-        std::cout << "\t\tMaximum work item size for dimension " << i;
-        std::cout << ": " << max_work_item_sizes[i] << std::endl;
-    }
-
-    /* check maximum work group size */
-    cl_uint max_work_group_size;
-    max_work_group_size = device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
-    std::cout << "\tMaximum work group size: " << max_work_group_size;
-    std::cout << std::endl;
-
+    queue = cl::CommandQueue(context, device);
+    /* check device info for image support and output dimensions */
+    check_device_info(&device, &m_err);
     /* tell the user we are starting execution */
     std::cout << "STARTING EXECUTION" << std::endl;
-
     /* choose parameters for fractal */
+    size_t size = 3000;
     static float frac_center_re = 0.0;
     static float frac_center_im = 0.0;
     static float frac_zoom = 1.0;
     static float frac_c_re = 0.0;
     static float frac_c_im = 0.64;
-  
     /* initialize image as type RGBA with each element having size 8 bytes */ 
     cl::ImageFormat image_format(CL_RGBA, CL_UNSIGNED_INT8);
     cl::Image2D image(context,
@@ -139,21 +72,11 @@ int main(int argc, char* argv[])
                       (size_t)0,
                       NULL,
                       &err);
-
     if (err != CL_SUCCESS)
     {
         std::cerr << "Did not successfully create image" << std::endl;
         return EXIT_FAILURE;
     }
-    else
-    {
-        size_t height, width;
-        err = image.getImageInfo(CL_IMAGE_HEIGHT, &height);
-        err = image.getImageInfo(CL_IMAGE_WIDTH, &width);
-        std::cout << "Successfully created image with size: ";
-        std::cout << height << "x" << width << std::endl;
-    }
-
     /* read kernel source code from file */
     cl::Program::Sources sources;
     std::ifstream kernel_file("src/kernel.cl");
@@ -161,7 +84,6 @@ int main(int argc, char* argv[])
     buffer << kernel_file.rdbuf();
     std::string kernel_source = buffer.str();
     sources.push_back({kernel_source.c_str(), kernel_source.length()});
-   
     /* build kernel program and output build errors to file */ 
     cl::Program program(context, sources);
     if (program.build({device}) != CL_SUCCESS)
@@ -180,12 +102,9 @@ int main(int argc, char* argv[])
     {
         std::cout << "Successfully built kernel" << std::endl;
     }
-
-    cl_uint4 color_init = {{255, 255, 255, 255}};
-
     /* create colormap */
     unsigned int cmap_size;
-    cl_uint4* cmap = colormap("colormaps/cool.png", &cmap_size);
+    cl_uint4* cmap = colormap("colormaps/autumn.png", &cmap_size);
     cl::Buffer cmap_buf(context, 
                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                         sizeof(cl_uint4) * cmap_size,
@@ -222,8 +141,6 @@ int main(int argc, char* argv[])
     spaced_im_kernel.setArg(2, (float)size);
     spaced_im_kernel.setArg(3, buffer_im);
 
-    /* create command queue */
-    cl::CommandQueue queue(context, device);
 
     /* create origin and region locations */
     cl::size_t<3> origin;
@@ -234,6 +151,8 @@ int main(int argc, char* argv[])
     region[0] = size;
     region[1] = size;
     region[2] = 1;
+
+    cl_uint4 color_init = {{255, 255, 255, 255}};
 
     /* write initial color to image */
     err = queue.enqueueFillImage(image, color_init, origin, region);
@@ -318,6 +237,93 @@ int main(int argc, char* argv[])
     return EXIT_SUCCESS;
 }
 
+
+cl::Platform get_platform(int* m_err)
+{
+    /* get all available OpenCL platforms */
+    std::vector<cl::Platform> all_platforms;
+    cl::Platform::get(&all_platforms);
+    if (all_platforms.size() == 0)
+    {
+        std::cerr << "No OpenCL platforms found... exiting" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    /* print number of available platforms to stdout */
+    else if (all_platforms.size() > 1)
+        std::cout << "Found " << all_platforms.size() << " available"
+                  << " OpenCL platforms" << std::endl;
+    else
+        std::cout << "Found 1 available OpenCL platform" << std::endl;
+    cl::Platform platform = all_platforms[0];
+    std::cout << "\tUsing platform " << platform.getInfo<CL_PLATFORM_NAME>()
+              << std::endl;
+    return platform;
+}
+
+
+cl::Device get_device(cl::Platform* platform, int* m_err)
+{
+    std::vector<cl::Device> all_devices;
+    platform->getDevices(CL_DEVICE_TYPE_ALL, &all_devices);
+    if (all_devices.size() == 0)
+    {
+        std::cerr << "No OpenCL devices found... exiting" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    /* let user choose OpenCL device if more than 1 is available */
+    unsigned int device_num = 0;
+    if (all_devices.size() > 1)
+    {
+        std::cout << "Available OpenCL devices:" << std::endl;
+        for (unsigned int i = 0; i < all_devices.size(); i++)
+        {
+            std::cout << "\t[" << i << "] "
+                      << all_devices[i].getInfo<CL_DEVICE_NAME>()
+                      << std::endl;
+        }
+        std::cout << "Device preference: ";
+        std::cin >> device_num;
+    }
+    else
+    {
+        std::cout << "Found 1 available OpenCL device" << std::endl;
+    }
+    return all_devices[device_num]; 
+}
+
+
+cl::Context get_context(cl::Device* device, int* m_err)
+{
+    return cl::Context({*device});
+}
+
+
+void check_device_info(cl::Device* device, int* m_err)
+{
+    /* make sure device has image support */
+    if (!device->getInfo<CL_DEVICE_IMAGE_SUPPORT>())
+    {
+        std::cerr << "OpenCL device does not have image support" << std::endl;
+        *m_err = 1;
+    }
+    /* output device into to stdout */
+    std::cout << "DEVICE INFO:" << std::endl;
+    cl_uint max_work_item_dims;
+    max_work_item_dims = device->getInfo<CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS>();
+    std::cout << "\tMaximum work item dimensions: " << max_work_item_dims 
+              << std::endl;
+    std::vector<long unsigned int> max_work_item_sizes;
+    max_work_item_sizes = device->getInfo<CL_DEVICE_MAX_WORK_ITEM_SIZES>();
+    for (cl_uint i = 0; i < max_work_item_dims; i++)
+        std::cout << "\t\tMaximum work item size for dimension " << i 
+                  << ": " << max_work_item_sizes[i] << std::endl;
+    cl_uint max_work_group_size;
+    max_work_group_size = device->getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>();
+    std::cout << "\tMaximum work group size: " << max_work_group_size
+              << std::endl;
+}
+
+
 cl_uint4* colormap(std::string filename, unsigned int* size)
 {
     std::vector<unsigned char> image;
@@ -333,4 +339,10 @@ cl_uint4* colormap(std::string filename, unsigned int* size)
     }
     *size = width;
     return cmap;
+}
+
+
+void cleanup()
+{
+
 }
