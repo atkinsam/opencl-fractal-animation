@@ -11,6 +11,7 @@
 #include <sstream>
 #include "lodepng.h"
 #include "opencl_errors.hpp"
+#include "julia_set.hpp"
 
 
 cl_uint4* colormap(std::string filename, unsigned int* size);
@@ -56,14 +57,18 @@ int main(int argc, char* argv[])
     /* tell the user we are starting execution */
     std::cout << "STARTING EXECUTION" << std::endl;
     /* choose parameters for fractal */
-    size_t size = 3000;
-    static float frac_center_re = 0.0;
-    static float frac_center_im = 0.0;
-    static float frac_zoom = 1.0;
-    static float frac_c_re = 0.0;
-    static float frac_c_im = 0.64;
+    size_t size = 2000;
+    float frac_center_re = 0.0;
+    float frac_center_im = 0.0;
+    float frac_zoom = 1.0;
+    float frac_c_re = 0.0;
+    float frac_c_im = 0.64;
+    float frac_c_re_step = 0.0;
+    float frac_c_im_step = 0.0;
     /* initialize image as type RGBA with each element having size 8 bytes */ 
     cl::ImageFormat image_format(CL_RGBA, CL_UNSIGNED_INT8);
+
+#if 0
     cl::Image2D image(context,
                       CL_MEM_READ_WRITE,
                       image_format,
@@ -77,6 +82,8 @@ int main(int argc, char* argv[])
         std::cerr << "Did not successfully create image" << std::endl;
         return EXIT_FAILURE;
     }
+#endif
+
     /* read kernel source code from file */
     cl::Program::Sources sources;
     std::ifstream kernel_file("src/kernel.cl");
@@ -104,7 +111,7 @@ int main(int argc, char* argv[])
     }
     /* create colormap */
     unsigned int cmap_size;
-    cl_uint4* cmap = colormap("colormaps/autumn.png", &cmap_size);
+    cl_uint4* cmap = colormap("colormaps/cool.png", &cmap_size);
     cl::Buffer cmap_buf(context, 
                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                         sizeof(cl_uint4) * cmap_size,
@@ -119,7 +126,8 @@ int main(int argc, char* argv[])
     /* create kernels from program */
     cl::Buffer buffer_re(context, CL_MEM_READ_WRITE, sizeof(float) * size);
     cl::Buffer buffer_im(context, CL_MEM_READ_WRITE, sizeof(float) * size);
-    
+   
+#if 0 
     cl::Kernel render_kernel(program, "render_image");
     render_kernel.setArg(0, image);
     render_kernel.setArg(1, buffer_re);
@@ -128,6 +136,7 @@ int main(int argc, char* argv[])
     render_kernel.setArg(4, cmap_size);
     render_kernel.setArg(5, frac_c_re);
     render_kernel.setArg(6, frac_c_im);
+#endif
 
     cl::Kernel spaced_re_kernel(program, "even_re");
     spaced_re_kernel.setArg(0, frac_center_re);
@@ -141,7 +150,7 @@ int main(int argc, char* argv[])
     spaced_im_kernel.setArg(2, (float)size);
     spaced_im_kernel.setArg(3, buffer_im);
 
-
+#if 0
     /* create origin and region locations */
     cl::size_t<3> origin;
     origin[0] = 0;
@@ -156,6 +165,7 @@ int main(int argc, char* argv[])
 
     /* write initial color to image */
     err = queue.enqueueFillImage(image, color_init, origin, region);
+#endif
 
     err = queue.enqueueTask(spaced_re_kernel, NULL, NULL);
     if (err != CL_SUCCESS)
@@ -171,6 +181,7 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
+#if 0
     err = queue.finish();
     if (err != CL_SUCCESS)
     {
@@ -223,6 +234,7 @@ int main(int argc, char* argv[])
     }
 
     /* export image to png */
+    std::cout << "Exporting PNG" << std::endl;;
     unsigned image_error = lodepng::encode("test.png", output, size, size);
     if (image_error)
     {
@@ -230,6 +242,7 @@ int main(int argc, char* argv[])
         std::cout << lodepng_error_text(image_error) << std::endl;
         return EXIT_SUCCESS;
     }
+#endif
 
     /* unload resources */
     platform.unloadCompiler();

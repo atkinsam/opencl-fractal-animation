@@ -3515,9 +3515,13 @@ unsigned lodepng_convert(unsigned char* out, const unsigned char* in,
     unsigned char r = 0, g = 0, b = 0, a = 0;
     for(i = 0; i != numpixels; ++i)
     {
+      /* encoding progress */
+      /* printf("\r\t\t%3.0f%%", (float)100*((float)i/(float)numpixels)); */
+      fflush(stdout);
       getPixelColorRGBA8(&r, &g, &b, &a, in, i, mode_in);
       CERROR_TRY_RETURN(rgba8ToPixel(out, i, mode_out, &tree, r, g, b, a));
     }
+    /* printf("\n"); */
   }
 
   if(mode_out->colortype == LCT_PALETTE)
