@@ -58,31 +58,28 @@ int main(int argc, char* argv[])
     std::cout << "STARTING EXECUTION" << std::endl;
     /* choose parameters for fractal */
     size_t size = 2000;
-    float frac_center_re = 0.0;
-    float frac_center_im = 0.0;
-    float frac_zoom = 1.0;
-    float frac_c_re = 0.0;
-    float frac_c_im = 0.64;
-    float frac_c_re_step = 0.0;
-    float frac_c_im_step = 0.0;
+    unsigned int num_frames = 50;
+    float center_re = 0.0;
+    float center_im = 0.0;
+    float zoom = 1.0;
+    float c_re = 0.0;
+    float c_im = 0.64;
+    float c_re_step = 0.0;
+    float c_im_step = 0.001;
     /* initialize image as type RGBA with each element having size 8 bytes */ 
     cl::ImageFormat image_format(CL_RGBA, CL_UNSIGNED_INT8);
 
-#if 0
-    cl::Image2D image(context,
-                      CL_MEM_READ_WRITE,
-                      image_format,
-                      (size_t)size,
-                      (size_t)size,
-                      (size_t)0,
-                      NULL,
-                      &err);
-    if (err != CL_SUCCESS)
+    /* initialize julia sets and fill with white */
+    std::vector<Julia_Set> frames;
+    frames.resize(num_frames);
+    for (unsigned int i = 0; i < num_frames; i++)
     {
-        std::cerr << "Did not successfully create image" << std::endl;
-        return EXIT_FAILURE;
+        frames[i] = Julia_Set(size, &image_format, &context);
+        frames[i].fill_white(&queue);
     }
-#endif
+    std::cout << "Successfully initalized images and filled with white"
+              << std::endl;
+
 
     /* read kernel source code from file */
     cl::Program::Sources sources;
@@ -91,6 +88,7 @@ int main(int argc, char* argv[])
     buffer << kernel_file.rdbuf();
     std::string kernel_source = buffer.str();
     sources.push_back({kernel_source.c_str(), kernel_source.length()});
+    
     /* build kernel program and output build errors to file */ 
     cl::Program program(context, sources);
     if (program.build({device}) != CL_SUCCESS)
@@ -107,8 +105,10 @@ int main(int argc, char* argv[])
     }
     else
     {
-        std::cout << "Successfully built kernel" << std::endl;
+        std::cout << "Successfully built OpenCL program from source"
+                  << std::endl;
     }
+
     /* create colormap */
     unsigned int cmap_size;
     cl_uint4* cmap = colormap("colormaps/cool.png", &cmap_size);
@@ -122,64 +122,76 @@ int main(int argc, char* argv[])
         std::cerr << "Could not create colormap buffer" << std::endl;
         return EXIT_FAILURE;
     }
+    std::cout << "Successfully created colormap buffer" << std::endl;
 
-    /* create kernels from program */
     cl::Buffer buffer_re(context, CL_MEM_READ_WRITE, sizeof(float) * size);
     cl::Buffer buffer_im(context, CL_MEM_READ_WRITE, sizeof(float) * size);
-   
-#if 0 
-    cl::Kernel render_kernel(program, "render_image");
-    render_kernel.setArg(0, image);
-    render_kernel.setArg(1, buffer_re);
-    render_kernel.setArg(2, buffer_im);
-    render_kernel.setArg(3, cmap_buf);
-    render_kernel.setArg(4, cmap_size);
-    render_kernel.setArg(5, frac_c_re);
-    render_kernel.setArg(6, frac_c_im);
-#endif
 
+    /* create kernels for julia sets */
+    for (unsigned int i = 0; i < num_frames; i++)
+        frames[i].create_kernel(&program,
+                                "render_image",
+                                &buffer_re,
+                                &buffer_im,
+                                &cmap_buf,
+                                cmap_size,
+                                c_re + i * c_re_step,
+                                c_im + i * c_im_step);
+    std::cout << "Successfully created kernels for julia set computation"
+              << std::endl;
+    
+    /* create kernels for evely spaced real and imaginary values */    
     cl::Kernel spaced_re_kernel(program, "even_re");
-    spaced_re_kernel.setArg(0, frac_center_re);
-    spaced_re_kernel.setArg(1, frac_zoom);
+    spaced_re_kernel.setArg(0, center_re);
+    spaced_re_kernel.setArg(1, zoom);
     spaced_re_kernel.setArg(2, (float)size);
     spaced_re_kernel.setArg(3, buffer_re);
-
     cl::Kernel spaced_im_kernel(program, "even_im");
-    spaced_im_kernel.setArg(0, frac_center_im);
-    spaced_im_kernel.setArg(1, frac_zoom);
+    spaced_im_kernel.setArg(0, center_im);
+    spaced_im_kernel.setArg(1, zoom);
     spaced_im_kernel.setArg(2, (float)size);
     spaced_im_kernel.setArg(3, buffer_im);
+    std::cout << "Successfully created kernels for real and imaginary values"
+              << std::endl;
 
-#if 0
-    /* create origin and region locations */
-    cl::size_t<3> origin;
-    origin[0] = 0;
-    origin[1] = 0;
-    origin[2] = 0;
-    cl::size_t<3> region;
-    region[0] = size;
-    region[1] = size;
-    region[2] = 1;
-
-    cl_uint4 color_init = {{255, 255, 255, 255}};
-
-    /* write initial color to image */
-    err = queue.enqueueFillImage(image, color_init, origin, region);
-#endif
-
+    /* add real and imaginary value kernels to queue and finish */
     err = queue.enqueueTask(spaced_re_kernel, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         std::cerr << "Could not compute spaced real values" << std::endl;
         return EXIT_FAILURE;
     }
-
+    std::cout << "Successfully computed evenly spaced real values" 
+              << std::endl;
     err = queue.enqueueTask(spaced_im_kernel, NULL, NULL);
     if (err != CL_SUCCESS)
     {
         std::cerr << "Could not compute spaced imaginary values" << std::endl;
         return EXIT_FAILURE;
     }
+    std::cout << "Successfully computed evenly spaced imaginary values"
+              << std::endl;
+    std::cout << "Waiting for queue to finish before starting render..." 
+              << std::endl;
+    err = queue.finish();
+    if (err != CL_SUCCESS)
+    {
+        std::cerr << "Could not finish queue before render" << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    /* add julia set kernels to queue */
+    for (unsigned int i = 0; i < num_frames; i++)
+        frames[i].queue_kernel(&queue);
+    std::cout << "Successfully added julia set kernels to queue" << std::endl;
+    std::cout << "Waiting for julia sets to render..." << std::endl;
+    err = queue.finish();
+    if (err != CL_SUCCESS)
+    {
+        std::cerr << "Could not finish rendering" << std::endl;
+        return EXIT_FAILURE;
+    }
+    std::cout << "Successfully computed julia sets" << std::endl;
 
 #if 0
     err = queue.finish();
