@@ -17,6 +17,7 @@ Julia_Set::Julia_Set(size_t size,
     _region[0] = _size;
     _region[1] = _size;
     _region[2] = 1;
+    _result = new uint8_t[_size * _size * 4];
     _image = cl::Image2D(*context,
                          CL_MEM_READ_WRITE,
                          *format,
@@ -71,4 +72,26 @@ void Julia_Set::queue_kernel(cl::CommandQueue* queue)
                                              NULL);
     if (err != CL_SUCCESS)
         std::cerr << "Could not add kernel to queue" << std::endl;
+}
+
+
+void Julia_Set::read_image_to_host(cl::CommandQueue* queue)
+{
+    cl_int err = queue->enqueueReadImage(_image, CL_TRUE, _origin, _region,
+                                         0, 0, _result, NULL, NULL);
+    if (err != CL_SUCCESS)
+        std::cerr << "Could not read image to host" << std::endl;
+}
+
+
+void Julia_Set::export_to_png(std::string filename)
+{
+    std::vector<unsigned char> output;
+    output.resize(_size * _size * 4);
+    for (unsigned int i = 0; i < _size * _size * 4; i++)
+        output[i] = (unsigned char)_result[i];
+    unsigned image_error = lodepng::encode(filename, output, _size, _size);
+    if (image_error)
+        std::cout << "Image encoding error: "
+                  << lodepng_error_text(image_error) << std::endl;
 }

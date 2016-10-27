@@ -9,6 +9,8 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include "lodepng.h"
 #include "opencl_errors.hpp"
 #include "julia_set.hpp"
@@ -57,15 +59,15 @@ int main(int argc, char* argv[])
     /* tell the user we are starting execution */
     std::cout << "STARTING EXECUTION" << std::endl;
     /* choose parameters for fractal */
-    size_t size = 2000;
-    unsigned int num_frames = 50;
+    size_t size = 1000;
+    unsigned int num_frames = 100;
     float center_re = 0.0;
     float center_im = 0.0;
     float zoom = 1.0;
     float c_re = 0.0;
-    float c_im = 0.64;
+    float c_im = 0.62;
     float c_re_step = 0.0;
-    float c_im_step = 0.001;
+    float c_im_step = 0.0005;
     /* initialize image as type RGBA with each element having size 8 bytes */ 
     cl::ImageFormat image_format(CL_RGBA, CL_UNSIGNED_INT8);
 
@@ -193,71 +195,49 @@ int main(int argc, char* argv[])
     }
     std::cout << "Successfully computed julia sets" << std::endl;
 
-#if 0
+    /* read julia sets to host memory */
+    for (unsigned int i = 0; i < num_frames; i++)
+        frames[i].read_image_to_host(&queue);
+    std::cout << "Waiting for images to be read to host memory" << std::endl;
     err = queue.finish();
     if (err != CL_SUCCESS)
     {
-        std::cerr << "Could not finish queue before render" << std::endl;
+        std::cerr << "Could not finish reading to host memory" << std::endl;
+        return EXIT_FAILURE;
     }
+    std::cout << "Finished reading images to host memory" << std::endl;
 
-    /* add kernel to queue */
-    err = queue.enqueueNDRangeKernel(render_kernel, 
-                                     cl::NullRange, 
-                                     cl::NDRange(size, size), 
-                                     cl::NullRange,
-                                     NULL,
-                                     NULL);
-    if (err != CL_SUCCESS)
-    {
-        std::cerr << "Could not execute kernel: " << std::endl;
-        return EXIT_FAILURE;
-    }
-   
-    /* make sure all queued operations are finished before reading image */ 
-    err = queue.finish();
-    if (err != CL_SUCCESS)
-    {
-        std::cerr << "Queue could not finish execution" << std::endl;
-        return EXIT_FAILURE;
-    }
+    /* create directory to hold finished PNG images */
+    struct stat st = {0};
+    if (stat("./frames/", &st) == -1)
+        mkdir("./frames/", 0700);
 
-    std::cout << "Finished rendering" << std::endl;
-   
-    /* read finished image from device memory */ 
-    uint8_t* result = new uint8_t[size * size * 4];
-    err = queue.enqueueReadImage(image, CL_TRUE, origin, region, 0, 0, result,
-                           NULL, NULL);
-    if (err != CL_SUCCESS)
-    {
-        std::cerr << "OpenCL enqueueReadImage call failed: " << std::endl;
-        return EXIT_FAILURE;
-    }
-    else
-    {
-        std::cout << "Successfully read image to host memory" << std::endl;
-    }
+    /* create buffer for output file names */
+    char png_buf[100];
     
-    /* convert from array to vector for lodepng */
-    std::vector<unsigned char> output;
-    output.resize(size * size * 4);
-    for (unsigned int i = 0; i < size * size * 4; i++)
+    /* export julia set images to PNG files */
+    std::cout << "Waiting for images to be encoded to PNG..." << std::endl;
+    for (unsigned int i = 0; i < num_frames; i++)
     {
-        output[i] = (unsigned char)result[i];
+        snprintf(png_buf, sizeof(png_buf), "./frames/F%04d.png", i);
+        frames[i].export_to_png(png_buf);
     }
-
-    /* export image to png */
-    std::cout << "Exporting PNG" << std::endl;;
-    unsigned image_error = lodepng::encode("test.png", output, size, size);
-    if (image_error)
+    err = queue.finish();
+    if (err != CL_SUCCESS)
     {
-        std::cout << "Image encoding error: ";
-        std::cout << lodepng_error_text(image_error) << std::endl;
-        return EXIT_SUCCESS;
+        std::cerr << "Could not finish encoding images" << std::endl;
+        return EXIT_FAILURE;
     }
-#endif
+    std::cout << "Finished encoding and exporting images to PNG" << std::endl;
 
     /* unload resources */
     platform.unloadCompiler();
+
+    /* output to MP4 */
+    std::string mp4_system_call = "ffmpeg -f image2 -r 30 -i ";
+    mp4_system_call += "frames/F%04d.png -vcodec mpeg4 -qscale 1 -y ";
+    mp4_system_call += "out.mp4";
+    system(mp4_system_call.c_str());
 
     return EXIT_SUCCESS;
 }
