@@ -11,6 +11,8 @@
 #include <sstream>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <time.h>
+#include <iomanip>
 #include "lodepng.h"
 #include "opencl_errors.hpp"
 #include "julia_set.hpp"
@@ -21,6 +23,7 @@ cl::Platform get_platform(int* m_err);
 cl::Device get_device(cl::Platform* platform, int* m_err);
 cl::Context get_context(cl::Device* device, int* m_err);
 void check_device_info(cl::Device* device, int* m_err);
+std::string ts(time_t* start_time);
 void cleanup();
 
 
@@ -58,16 +61,17 @@ int main(int argc, char* argv[])
     check_device_info(&device, &m_err);
     /* tell the user we are starting execution */
     std::cout << "STARTING EXECUTION" << std::endl;
+    time_t t_s = time(0);
     /* choose parameters for fractal */
-    size_t size = 400;
-    unsigned int num_frames = 300;
+    size_t size = 1000;
+    unsigned int num_frames = 600;
     float center_re = 0.0;
     float center_im = 0.0;
     float zoom = 1.0;
     float c_re = 0.0;
     float c_im = 0.635;
     float c_re_step = 0.0;
-    float c_im_step = 0.00005;
+    float c_im_step = 0.00002;
     /* initialize image as type RGBA with each element having size 8 bytes */ 
     cl::ImageFormat image_format(CL_RGBA, CL_UNSIGNED_INT8);
 
@@ -79,8 +83,8 @@ int main(int argc, char* argv[])
         frames[i] = Julia_Set(size, &image_format, &context);
         frames[i].fill_white(&queue);
     }
-    std::cout << "Successfully initalized images and filled with white"
-              << std::endl;
+    std::cout << ts(&t_s) << "Successfully initalized images and filled "
+              << " with white" << std::endl;
 
 
     /* read kernel source code from file */
@@ -107,13 +111,13 @@ int main(int argc, char* argv[])
     }
     else
     {
-        std::cout << "Successfully built OpenCL program from source"
-                  << std::endl;
+        std::cout << ts(&t_s) << "Successfully built OpenCL program "
+                  << "from source" << std::endl;
     }
 
     /* create colormap */
     unsigned int cmap_size;
-    cl_uint4* cmap = colormap("colormaps/BuPu.png", &cmap_size);
+    cl_uint4* cmap = colormap("colormaps/GnBu.png", &cmap_size);
     cl::Buffer cmap_buf(context, 
                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                         sizeof(cl_uint4) * cmap_size,
@@ -124,7 +128,8 @@ int main(int argc, char* argv[])
         std::cerr << "Could not create colormap buffer" << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << "Successfully created colormap buffer" << std::endl;
+    std::cout << ts(&t_s) << "Successfully created colormap buffer" 
+              << std::endl;
 
     cl::Buffer buffer_re(context, CL_MEM_READ_WRITE, sizeof(float) * size);
     cl::Buffer buffer_im(context, CL_MEM_READ_WRITE, sizeof(float) * size);
@@ -139,8 +144,8 @@ int main(int argc, char* argv[])
                                 cmap_size,
                                 c_re + i * c_re_step,
                                 c_im + i * c_im_step);
-    std::cout << "Successfully created kernels for julia set computation"
-              << std::endl;
+    std::cout << ts(&t_s) << "Successfully created kernels for julia "
+              << "set computation" << std::endl;
     
     /* create kernels for evely spaced real and imaginary values */    
     cl::Kernel spaced_re_kernel(program, "even_re");
@@ -153,8 +158,8 @@ int main(int argc, char* argv[])
     spaced_im_kernel.setArg(1, zoom);
     spaced_im_kernel.setArg(2, (float)size);
     spaced_im_kernel.setArg(3, buffer_im);
-    std::cout << "Successfully created kernels for real and imaginary values"
-              << std::endl;
+    std::cout << ts(&t_s) << "Successfully created kernels for real "
+              << "and imaginary values" << std::endl;
 
     /* add real and imaginary value kernels to queue and finish */
     err = queue.enqueueTask(spaced_re_kernel, NULL, NULL);
@@ -163,7 +168,7 @@ int main(int argc, char* argv[])
         std::cerr << "Could not compute spaced real values" << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << "Successfully computed evenly spaced real values" 
+    std::cout << ts(&t_s) << "Successfully computed evenly spaced real values" 
               << std::endl;
     err = queue.enqueueTask(spaced_im_kernel, NULL, NULL);
     if (err != CL_SUCCESS)
@@ -171,10 +176,10 @@ int main(int argc, char* argv[])
         std::cerr << "Could not compute spaced imaginary values" << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << "Successfully computed evenly spaced imaginary values"
-              << std::endl;
-    std::cout << "Waiting for queue to finish before starting render..." 
-              << std::endl;
+    std::cout << ts(&t_s) << "Successfully computed evenly spaced "
+              << "imaginary values" << std::endl;
+    std::cout << ts(&t_s) << "Waiting for queue to finish before "
+              << "starting render..." << std::endl;
     err = queue.finish();
     if (err != CL_SUCCESS)
     {
@@ -185,27 +190,31 @@ int main(int argc, char* argv[])
     /* add julia set kernels to queue */
     for (unsigned int i = 0; i < num_frames; i++)
         frames[i].queue_kernel(&queue);
-    std::cout << "Successfully added julia set kernels to queue" << std::endl;
-    std::cout << "Waiting for julia sets to render..." << std::endl;
+    std::cout << ts(&t_s) << "Successfully added julia set kernels to queue" 
+              << std::endl;
+    std::cout << ts(&t_s) << "Waiting for julia sets to render..." 
+              << std::endl;
     err = queue.finish();
     if (err != CL_SUCCESS)
     {
         std::cerr << "Could not finish rendering" << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << "Successfully computed julia sets" << std::endl;
+    std::cout << ts(&t_s) << "Successfully computed julia sets" << std::endl;
 
     /* read julia sets to host memory */
     for (unsigned int i = 0; i < num_frames; i++)
         frames[i].read_image_to_host(&queue);
-    std::cout << "Waiting for images to be read to host memory" << std::endl;
+    std::cout << ts(&t_s) << "Waiting for images to be read to host memory..." 
+              << std::endl;
     err = queue.finish();
     if (err != CL_SUCCESS)
     {
         std::cerr << "Could not finish reading to host memory" << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << "Finished reading images to host memory" << std::endl;
+    std::cout << ts(&t_s) << "Finished reading images to host memory" 
+              << std::endl;
 
     /* create directory to hold finished PNG images */
     struct stat st = {0};
@@ -217,7 +226,8 @@ int main(int argc, char* argv[])
     char ppm_buf[100];
     
     /* export julia set images to PNG files */
-    std::cout << "Waiting for images to be encoded to PNG..." << std::endl;
+    std::cout << ts(&t_s) << "Waiting for images to be encoded to PNG..." 
+              << std::endl;
     for (unsigned int i = 0; i < num_frames; i++)
     {
         snprintf(png_buf, sizeof(png_buf), "./frames/F%04d.png", i);
@@ -231,13 +241,14 @@ int main(int argc, char* argv[])
         std::cerr << "Could not finish encoding images" << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << "Finished encoding and exporting images to PNG" << std::endl;
+    std::cout << ts(&t_s) << "Finished encoding and exporting images to PNG" 
+              << std::endl;
 
     /* unload resources */
     platform.unloadCompiler();
 
     /* output to MP4 */
-    std::string mp4_system_call = "ffmpeg -f image2 -r 30 -i ";
+    std::string mp4_system_call = "ffmpeg -f image2 -r 60 -i ";
     mp4_system_call += "frames/F%04d.ppm -vcodec mpeg4 -q:v 1 -y ";
     mp4_system_call += "out.mp4 >> ffmpeg_output.txt";
     system(mp4_system_call.c_str());
@@ -347,6 +358,14 @@ cl_uint4* colormap(std::string filename, unsigned int* size)
     }
     *size = width;
     return cmap;
+}
+
+
+std::string ts(time_t* start_time)
+{
+    std::stringstream stream;
+    stream << difftime(time(0), *start_time);
+    return "[" + stream.str() + "s] ";
 }
 
 
