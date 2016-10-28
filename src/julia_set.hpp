@@ -8,6 +8,8 @@
 #define JULIA_SET_H
 
 #include <iostream>
+#include <fstream>
+#include <algorithm>
 #include "lodepng.h"
 #ifdef __APPLE__
 #include <OpenCL/cl.hpp>
@@ -34,6 +36,7 @@ class Julia_Set
         void queue_kernel(cl::CommandQueue* queue);
         void read_image_to_host(cl::CommandQueue* queue);
         void export_to_png(std::string filename);
+        void export_to_ppm(std::string filename);
     private:
         cl_int _err;
         size_t _size;

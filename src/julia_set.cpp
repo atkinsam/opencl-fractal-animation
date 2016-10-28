@@ -95,3 +95,21 @@ void Julia_Set::export_to_png(std::string filename)
         std::cout << "Image encoding error: "
                   << lodepng_error_text(image_error) << std::endl;
 }
+
+
+void Julia_Set::export_to_ppm(std::string filename)
+{
+    std::ofstream ofs;
+    ofs.open(filename.c_str(), std::ios::binary);
+    ofs << "P6\n" << _size << " " << _size << "\n255\n";
+    unsigned char r, g, b, a;
+    for (unsigned int i = 0; i < _size * _size * 4; i+=4)
+    {
+        r = static_cast<unsigned char>(_result[i+0]);
+        g = static_cast<unsigned char>(_result[i+1]);
+        b = static_cast<unsigned char>(_result[i+2]);
+        a = static_cast<unsigned char>(_result[i+3]);
+        ofs << r << g << b;
+    }
+    ofs.close();
+}

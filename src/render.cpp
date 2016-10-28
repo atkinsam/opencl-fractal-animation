@@ -59,15 +59,15 @@ int main(int argc, char* argv[])
     /* tell the user we are starting execution */
     std::cout << "STARTING EXECUTION" << std::endl;
     /* choose parameters for fractal */
-    size_t size = 1000;
-    unsigned int num_frames = 100;
+    size_t size = 400;
+    unsigned int num_frames = 300;
     float center_re = 0.0;
     float center_im = 0.0;
     float zoom = 1.0;
     float c_re = 0.0;
-    float c_im = 0.62;
+    float c_im = 0.635;
     float c_re_step = 0.0;
-    float c_im_step = 0.0005;
+    float c_im_step = 0.00005;
     /* initialize image as type RGBA with each element having size 8 bytes */ 
     cl::ImageFormat image_format(CL_RGBA, CL_UNSIGNED_INT8);
 
@@ -113,7 +113,7 @@ int main(int argc, char* argv[])
 
     /* create colormap */
     unsigned int cmap_size;
-    cl_uint4* cmap = colormap("colormaps/cool.png", &cmap_size);
+    cl_uint4* cmap = colormap("colormaps/BuPu.png", &cmap_size);
     cl::Buffer cmap_buf(context, 
                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                         sizeof(cl_uint4) * cmap_size,
@@ -214,13 +214,16 @@ int main(int argc, char* argv[])
 
     /* create buffer for output file names */
     char png_buf[100];
+    char ppm_buf[100];
     
     /* export julia set images to PNG files */
     std::cout << "Waiting for images to be encoded to PNG..." << std::endl;
     for (unsigned int i = 0; i < num_frames; i++)
     {
         snprintf(png_buf, sizeof(png_buf), "./frames/F%04d.png", i);
-        frames[i].export_to_png(png_buf);
+        snprintf(ppm_buf, sizeof(ppm_buf), "./frames/F%04d.ppm", i);
+        /* frames[i].export_to_png(png_buf); */
+        frames[i].export_to_ppm(ppm_buf);
     }
     err = queue.finish();
     if (err != CL_SUCCESS)
@@ -235,8 +238,8 @@ int main(int argc, char* argv[])
 
     /* output to MP4 */
     std::string mp4_system_call = "ffmpeg -f image2 -r 30 -i ";
-    mp4_system_call += "frames/F%04d.png -vcodec mpeg4 -qscale 1 -y ";
-    mp4_system_call += "out.mp4";
+    mp4_system_call += "frames/F%04d.ppm -vcodec mpeg4 -q:v 1 -y ";
+    mp4_system_call += "out.mp4 >> ffmpeg_output.txt";
     system(mp4_system_call.c_str());
 
     return EXIT_SUCCESS;
