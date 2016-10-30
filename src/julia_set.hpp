@@ -1,8 +1,11 @@
-/*  julia_set.hpp
- *
- *  Author: Sam Atkinson
- *  Date modified: Oct. 26 2016
- */
+//  julia_set.hpp
+//
+//  Author: Sam Atkinson
+//  Date modified: Oct. 26 2016
+//
+//  Header file for julia set object, an OpenCL image created 
+//   using a julia set algorithm
+
 
 #ifndef JULIA_SET_H
 #define JULIA_SET_H
@@ -24,6 +27,7 @@ class Julia_Set
         Julia_Set(size_t size, 
                   cl::ImageFormat* format,
                   cl::Context* context);
+        ~Julia_Set(void);
         void fill_white(cl::CommandQueue* queue);
         void create_kernel(cl::Program* program, 
                            std::string function_name,
@@ -54,5 +58,4 @@ class Julia_Set
         uint8_t* _result;
 };
 
-
-#endif /* JULIA_SET_H */
+#endif // JULIA_SET_H

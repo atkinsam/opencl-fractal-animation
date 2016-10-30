@@ -6,7 +6,7 @@
 #include <CL/cl.hpp>
 #endif
 
-const char *getErrorString(cl_int error)
+const char *get_err_str(cl_int error)
 {
     switch(error)
     {
@@ -85,4 +85,4 @@ const char *getErrorString(cl_int error)
     }
 } 
 
-#endif
+#endif // OPENCL_ERRORS_H

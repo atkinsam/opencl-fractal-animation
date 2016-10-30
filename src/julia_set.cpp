@@ -1,8 +1,10 @@
-/*
- *
- *
- *
- */
+//  julia_set.cpp
+//
+//  Author: Sam Atkinson
+//  Date modified: Oct. 29 2016
+//
+//  Source code for julia set object functions
+
 
 #include "julia_set.hpp"
 
@@ -10,6 +12,7 @@ Julia_Set::Julia_Set(size_t size,
                      cl::ImageFormat* format,
                      cl::Context* context)
 {
+    // Initialize a few object variables
     _size = size;
     _origin[0] = 0;
     _origin[1] = 0;
@@ -17,7 +20,9 @@ Julia_Set::Julia_Set(size_t size,
     _region[0] = _size;
     _region[1] = _size;
     _region[2] = 1;
+    // Allocated memory for resulting image after OpenCL kernel execution
     _result = new uint8_t[_size * _size * 4];
+    // Create a blank OpenCL image
     _image = cl::Image2D(*context,
                          CL_MEM_READ_WRITE,
                          *format,
@@ -33,8 +38,16 @@ Julia_Set::Julia_Set(size_t size,
 }
 
 
+Julia_Set::~Julia_Set(void)
+{
+    // Deallocate memory for resulting image on host memeory
+    delete _result;
+}
+
+
 void Julia_Set::fill_white(cl::CommandQueue* queue)
 {
+    // Fill image entirely with white
     cl_uint4 color_init = {{255, 255, 255, 255}};
     cl_int err = queue->enqueueFillImage(_image, color_init, _origin, _region);
     if (err != CL_SUCCESS)
@@ -50,7 +63,8 @@ void Julia_Set::create_kernel(cl::Program* program,
                               unsigned int cmap_size,
                               float c_re,
                               float c_im)
-{
+{   
+    // Set arguments for kernel specific to this julia set 
     _render_kernel = cl::Kernel(*program, function_name.c_str());
     _render_kernel.setArg(0, _image);
     _render_kernel.setArg(1, *buffer_re);
@@ -64,6 +78,7 @@ void Julia_Set::create_kernel(cl::Program* program,
 
 void Julia_Set::queue_kernel(cl::CommandQueue* queue)
 {
+    // Add julia set kernel to queue to start computation
     cl_int err = queue->enqueueNDRangeKernel(_render_kernel,
                                              cl::NullRange,
                                              cl::NDRange(_size, _size),
@@ -77,6 +92,8 @@ void Julia_Set::queue_kernel(cl::CommandQueue* queue)
 
 void Julia_Set::read_image_to_host(cl::CommandQueue* queue)
 {
+    // Read OpenCL image from device memory to host memory, 
+    //   into the array allocated in the constructor
     cl_int err = queue->enqueueReadImage(_image, CL_TRUE, _origin, _region,
                                          0, 0, _result, NULL, NULL);
     if (err != CL_SUCCESS)
@@ -86,6 +103,8 @@ void Julia_Set::read_image_to_host(cl::CommandQueue* queue)
 
 void Julia_Set::export_to_png(std::string filename)
 {
+    // Use the lodepng library to encode and export the resulting julia
+    //   set image to a PNG file
     std::vector<unsigned char> output;
     output.resize(_size * _size * 4);
     for (unsigned int i = 0; i < _size * _size * 4; i++)
@@ -99,6 +118,8 @@ void Julia_Set::export_to_png(std::string filename)
 
 void Julia_Set::export_to_ppm(std::string filename)
 {
+    // Write the raw RGB image to a PPM file and export to the disk
+    // (this function executes significantly faster than export_to_png)
     std::ofstream ofs;
     ofs.open(filename.c_str(), std::ios::binary);
     ofs << "P6\n" << _size << " " << _size << "\n255\n";

@@ -1,35 +1,37 @@
 /*  kernel.cl
  *  
  *  Author: Sam Atkinson
- *  Date modified: Oct. 24, 2016
+ *  Date modified: Oct. 30, 2016
  *
- *
+ *  OpenCL kernel containing a main render function, two buffer fill
+ *    functions, and several complex number helper functions to create
+ *      a julia set and apply a color map
  */
 
 
-/* define type Complex */
+/* Define type Complex */
 typedef double2 Complex;
 
-/* get magnitude of Complex */
+/* Get magnitude of Complex */
 inline float c_abs(Complex a)
 {
     return (sqrt(a.x * a.x + a.y * a.y));
 }
 
-/* multiply Complex numbers */
+/* Multiply Complex numbers */
 inline Complex c_multiply(Complex a, Complex b)
 {
     return (Complex)(a.x * b.x - a.y * b.y,
                      a.x * b.y + a.y * b.x);
 }
 
-/* add Complex numbers */
+/* Add Complex numbers */
 inline Complex c_add(Complex a, Complex b)
 {
     return (Complex)(a.x + b.x, a.y + b.y);
 }
 
-/* compute evenly spaced real values */
+/* Compute evenly spaced real values */
 void kernel even_re(float center_re,
                     float zoom,
                     float size,
@@ -44,7 +46,7 @@ void kernel even_re(float center_re,
     }
 }
 
-/* compute evenly spaced imaginary values */
+/* Compute evenly spaced imaginary values */
 void kernel even_im(float center_im,
                     float zoom,
                     float size,
@@ -59,7 +61,7 @@ void kernel even_im(float center_im,
     }
 }
 
-/* compute the depth of one pixel of a fractal image */
+/* Compute the depth of one pixel of a fractal image */
 void kernel render_image(__write_only image2d_t image, 
                          global const float* spaced_re,
                          global const float* spaced_im,
@@ -68,8 +70,10 @@ void kernel render_image(__write_only image2d_t image,
                          float c_re,
                          float c_im)
 {
+    /* Get pixel coordinate from NDRange global IDs */
     int2 pos = {get_global_id(0), get_global_id(1)};
 
+    /* Compute depth of pixel from julia set complex polynomial algorithm */
     Complex z = (Complex)(spaced_re[pos.x], spaced_im[pos.y]);
     Complex c = (Complex)(c_re, c_im);
     unsigned char depth = 255; 
@@ -78,9 +82,8 @@ void kernel render_image(__write_only image2d_t image,
         z = c_add(c_multiply(z, z), c);
         depth--;
     }
+    /* Use colormap buffer to convert grayscale depth to RGB color */
     unsigned int color_index = (float)(depth - 0) /
                                (float)(255 - 0) * cmap_size;
-
-    /* uint4 color = (uint4)(depth, depth, depth, 255); */
     write_imageui(image, pos, cmap[color_index]);
 }

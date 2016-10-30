@@ -1,10 +1,10 @@
-/*  render_mp4.cpp
- *
- *  Author: Sam Atkinson
- *  Date modified: 09-Oct-2016
- *
- *  Renders an animated mp4 of a julia fractal transformation
- */
+//  render_mp4.cpp
+//
+//  Author: Sam Atkinson
+//  Date modified: 28-Oct-2016
+//
+//  Renders an animated mp4 of a julia fractal transformation
+
 
 #include <iostream>
 #include <fstream>
@@ -13,57 +13,36 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <iomanip>
+#include <cstdlib>
 #include "lodepng.h"
 #include "opencl_errors.hpp"
 #include "julia_set.hpp"
 
-
+// Function prototypes
 cl_uint4* colormap(std::string filename, unsigned int* size);
-cl::Platform get_platform(int* m_err);
-cl::Device get_device(cl::Platform* platform, int* m_err);
-cl::Context get_context(cl::Device* device, int* m_err);
-void check_device_info(cl::Device* device, int* m_err);
+cl::Platform get_platform(void);
+cl::Device get_device(cl::Platform* platform);
+cl::Context get_context(cl::Device* device);
+cl::Program build_program(std::string source_file, cl::Context* context,
+                          cl::Device* device);
+void check_device_info(cl::Device* device);
 std::string ts(time_t* start_time);
-void cleanup();
 
 
-int main(int argc, char* argv[])
+int main(int argc, char** argv)
 {
-    /* OpenCL variables */
-    cl_int err = CL_SUCCESS;
-    cl::Platform platform;
-    cl::Device device;
-    cl::Context context;
-    cl::CommandQueue queue;
-    /* main error */
-    int m_err = 0;
-    /* get OpenCL platform layer */
-    platform = get_platform(&m_err);
-    if (err != 0)
+    // Parse arguments
+    if (argc != 3)
     {
-        cleanup();
+        std::cerr << "Error: Incomplete arguments" << std::endl
+                  << "Usage: ./render.o <video size in px> <colormap png>"
+                  << std::endl;
         return EXIT_FAILURE;
     }
-    device = get_device(&platform, &m_err);
-    if (err != 0)
-    {
-        cleanup();
-        return EXIT_FAILURE;
-    }
-    context = get_context(&device, &m_err);
-    if (err != 0)
-    {
-        cleanup();
-        return EXIT_FAILURE;
-    }
-    queue = cl::CommandQueue(context, device);
-    /* check device info for image support and output dimensions */
-    check_device_info(&device, &m_err);
-    /* tell the user we are starting execution */
-    std::cout << "STARTING EXECUTION" << std::endl;
-    time_t t_s = time(0);
-    /* choose parameters for fractal */
-    size_t size = 1000;
+    size_t size = (size_t)atoi(argv[1]);
+    std::string cmap_filename = argv[2];
+   
+    // Define parameters for fractal animation 
     unsigned int num_frames = 600;
     float center_re = 0.0;
     float center_im = 0.0;
@@ -72,52 +51,36 @@ int main(int argc, char* argv[])
     float c_im = 0.635;
     float c_re_step = 0.0;
     float c_im_step = 0.00002;
-    /* initialize image as type RGBA with each element having size 8 bytes */ 
-    cl::ImageFormat image_format(CL_RGBA, CL_UNSIGNED_INT8);
 
-    /* initialize julia sets and fill with white */
-    std::vector<Julia_Set> frames;
-    frames.resize(num_frames);
-    for (unsigned int i = 0; i < num_frames; i++)
-    {
-        frames[i] = Julia_Set(size, &image_format, &context);
-        frames[i].fill_white(&queue);
-    }
-    std::cout << ts(&t_s) << "Successfully initalized images and filled "
-              << " with white" << std::endl;
+    // Declare OpenCL objects
+    cl_int err = CL_SUCCESS;
+    cl::Platform platform;
+    cl::Device device;
+    cl::Context context;
+    cl::CommandQueue queue;
 
+    // Initialize OpenCL platform layer
+    // ===============================================================
+    // Create OpenCL platform
+    platform = get_platform();
+    // Create OpenCL device
+    device = get_device(&platform);
+    // Create OpenCL context 
+    context = get_context(&device);
+    // Create OpenCL command queue
+    queue = cl::CommandQueue(context, device);
+    // Check device information for image support and dimensions
+    check_device_info(&device);
 
-    /* read kernel source code from file */
-    cl::Program::Sources sources;
-    std::ifstream kernel_file("src/kernel.cl");
-    std::stringstream buffer;
-    buffer << kernel_file.rdbuf();
-    std::string kernel_source = buffer.str();
-    sources.push_back({kernel_source.c_str(), kernel_source.length()});
-    
-    /* build kernel program and output build errors to file */ 
-    cl::Program program(context, sources);
-    if (program.build({device}) != CL_SUCCESS)
-    {
-        std::string err_str;
-        err_str = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(device);
-        std::ofstream build_log;
-        build_log.open("kernel_build_log.txt", std::ios::out);
-        build_log << err_str;
-        build_log.close();
-        std::cerr << "Error building kernel. See file kernel_build_log.txt" <<
-                     std::endl;
-        return EXIT_FAILURE;
-    }
-    else
-    {
-        std::cout << ts(&t_s) << "Successfully built OpenCL program "
-                  << "from source" << std::endl;
-    }
-
-    /* create colormap */
+    // Create buffers
+    // ===============================================================
+    // Create buffers for real and imaginary values
+    cl::Buffer buffer_re(context, CL_MEM_READ_WRITE, sizeof(float) * size);
+    cl::Buffer buffer_im(context, CL_MEM_READ_WRITE, sizeof(float) * size);
+    // Create buffer for colormap and fill with generated colormap
     unsigned int cmap_size;
-    cl_uint4* cmap = colormap("colormaps/GnBu.png", &cmap_size);
+    cl_uint4* cmap = colormap(cmap_filename, &cmap_size);
+    if (cmap == NULL) return EXIT_FAILURE;
     cl::Buffer cmap_buf(context, 
                         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
                         sizeof(cl_uint4) * cmap_size,
@@ -125,16 +88,28 @@ int main(int argc, char* argv[])
                         &err);
     if (err != CL_SUCCESS)
     {
-        std::cerr << "Could not create colormap buffer" << std::endl;
+        std::cerr << "Could not create colormap buffer: " << get_err_str(err)
+                  << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << ts(&t_s) << "Successfully created colormap buffer" 
-              << std::endl;
 
-    cl::Buffer buffer_re(context, CL_MEM_READ_WRITE, sizeof(float) * size);
-    cl::Buffer buffer_im(context, CL_MEM_READ_WRITE, sizeof(float) * size);
+    // Initialize Julia Set objects and fill images with white
+    // ===============================================================
+    // Declare image format as RGBA with 1 byte per color element
+    cl::ImageFormat image_format(CL_RGBA, CL_UNSIGNED_INT8);
+    std::vector<Julia_Set> frames;
+    frames.resize(num_frames);
+    for (unsigned int i = 0; i < num_frames; i++)
+    {
+        frames[i] = Julia_Set(size, &image_format, &context);
+        frames[i].fill_white(&queue);
+    }
 
-    /* create kernels for julia sets */
+    // Create kernels
+    // ===============================================================
+    // Build kernel program from source
+    cl::Program program = build_program("src/kernel.cl", &context, &device);
+    // Create kernels for julia set objects 
     for (unsigned int i = 0; i < num_frames; i++)
         frames[i].create_kernel(&program,
                                 "render_image",
@@ -144,10 +119,7 @@ int main(int argc, char* argv[])
                                 cmap_size,
                                 c_re + i * c_re_step,
                                 c_im + i * c_im_step);
-    std::cout << ts(&t_s) << "Successfully created kernels for julia "
-              << "set computation" << std::endl;
-    
-    /* create kernels for evely spaced real and imaginary values */    
+    // Create kernels for real & imaginary value buffers
     cl::Kernel spaced_re_kernel(program, "even_re");
     spaced_re_kernel.setArg(0, center_re);
     spaced_re_kernel.setArg(1, zoom);
@@ -158,96 +130,77 @@ int main(int argc, char* argv[])
     spaced_im_kernel.setArg(1, zoom);
     spaced_im_kernel.setArg(2, (float)size);
     spaced_im_kernel.setArg(3, buffer_im);
-    std::cout << ts(&t_s) << "Successfully created kernels for real "
-              << "and imaginary values" << std::endl;
-
-    /* add real and imaginary value kernels to queue and finish */
+   
+     
+    // Start OpenCL operations
+    // ===============================================================
+    
+    // Start execution timer
+    std::cout << "STARTING EXECUTION" << std::endl;
+    time_t t_s = time(0);
+   
+    // Compute evenly spaced real and imaginary values
+    // ===============================================================
     err = queue.enqueueTask(spaced_re_kernel, NULL, NULL);
     if (err != CL_SUCCESS)
     {
-        std::cerr << "Could not compute spaced real values" << std::endl;
+        std::cerr << "Could not compute spaced real values: " 
+                  << get_err_str(err) << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << ts(&t_s) << "Successfully computed evenly spaced real values" 
-              << std::endl;
     err = queue.enqueueTask(spaced_im_kernel, NULL, NULL);
     if (err != CL_SUCCESS)
     {
-        std::cerr << "Could not compute spaced imaginary values" << std::endl;
+        std::cerr << "Could not compute spaced imaginary values: " 
+                  << get_err_str(err) << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << ts(&t_s) << "Successfully computed evenly spaced "
-              << "imaginary values" << std::endl;
-    std::cout << ts(&t_s) << "Waiting for queue to finish before "
-              << "starting render..." << std::endl;
     err = queue.finish();
-    if (err != CL_SUCCESS)
-    {
-        std::cerr << "Could not finish queue before render" << std::endl;
-        return EXIT_FAILURE;
-    }
-
-    /* add julia set kernels to queue */
+    std::cout << ts(&t_s) << "Computed evenly spaced real and imaginary values"
+              << std::endl;
+    
+    // Compute julia sets
+    // ===============================================================
     for (unsigned int i = 0; i < num_frames; i++)
         frames[i].queue_kernel(&queue);
-    std::cout << ts(&t_s) << "Successfully added julia set kernels to queue" 
-              << std::endl;
-    std::cout << ts(&t_s) << "Waiting for julia sets to render..." 
-              << std::endl;
     err = queue.finish();
+    std::cout << ts(&t_s) << "Computed julia sets" << std::endl;
+
     if (err != CL_SUCCESS)
     {
-        std::cerr << "Could not finish rendering" << std::endl;
+        std::cerr << "Could not finish rendering: " << get_err_str(err)
+                  << std::endl;
         return EXIT_FAILURE;
     }
-    std::cout << ts(&t_s) << "Successfully computed julia sets" << std::endl;
 
-    /* read julia sets to host memory */
+    // Read julia sets to host memory and export
+    // ===============================================================
     for (unsigned int i = 0; i < num_frames; i++)
         frames[i].read_image_to_host(&queue);
-    std::cout << ts(&t_s) << "Waiting for images to be read to host memory..." 
-              << std::endl;
     err = queue.finish();
-    if (err != CL_SUCCESS)
-    {
-        std::cerr << "Could not finish reading to host memory" << std::endl;
-        return EXIT_FAILURE;
-    }
-    std::cout << ts(&t_s) << "Finished reading images to host memory" 
+    std::cout << ts(&t_s) << "Finished reading julia sets to host memory" 
               << std::endl;
-
-    /* create directory to hold finished PNG images */
+    // Create directory to hold rendered frames
     struct stat st = {0};
     if (stat("./frames/", &st) == -1)
         mkdir("./frames/", 0700);
-
-    /* create buffer for output file names */
-    char png_buf[100];
+    // Export julia set images to PPM files 
     char ppm_buf[100];
-    
-    /* export julia set images to PNG files */
-    std::cout << ts(&t_s) << "Waiting for images to be encoded to PNG..." 
-              << std::endl;
     for (unsigned int i = 0; i < num_frames; i++)
     {
-        snprintf(png_buf, sizeof(png_buf), "./frames/F%04d.png", i);
         snprintf(ppm_buf, sizeof(ppm_buf), "./frames/F%04d.ppm", i);
-        /* frames[i].export_to_png(png_buf); */
         frames[i].export_to_ppm(ppm_buf);
     }
     err = queue.finish();
-    if (err != CL_SUCCESS)
-    {
-        std::cerr << "Could not finish encoding images" << std::endl;
-        return EXIT_FAILURE;
-    }
-    std::cout << ts(&t_s) << "Finished encoding and exporting images to PNG" 
+    std::cout << ts(&t_s) << "Finished exporting julia sets to PPM files" 
               << std::endl;
 
-    /* unload resources */
+    // Cleanup resources
+    // ===============================================================
     platform.unloadCompiler();
 
-    /* output to MP4 */
+    // Create MP4 video from PPM image frames
+    // ===============================================================
     std::string mp4_system_call = "ffmpeg -f image2 -r 60 -i ";
     mp4_system_call += "frames/F%04d.ppm -vcodec mpeg4 -q:v 1 -y ";
     mp4_system_call += "out.mp4 >> ffmpeg_output.txt";
@@ -257,9 +210,9 @@ int main(int argc, char* argv[])
 }
 
 
-cl::Platform get_platform(int* m_err)
+cl::Platform get_platform(void)
 {
-    /* get all available OpenCL platforms */
+    // Get all available OpenCL platforms
     std::vector<cl::Platform> all_platforms;
     cl::Platform::get(&all_platforms);
     if (all_platforms.size() == 0)
@@ -267,7 +220,7 @@ cl::Platform get_platform(int* m_err)
         std::cerr << "No OpenCL platforms found... exiting" << std::endl;
         exit(EXIT_FAILURE);
     }
-    /* print number of available platforms to stdout */
+    // Print number of available platforms to stdout
     else if (all_platforms.size() > 1)
         std::cout << "Found " << all_platforms.size() << " available"
                   << " OpenCL platforms" << std::endl;
@@ -280,8 +233,9 @@ cl::Platform get_platform(int* m_err)
 }
 
 
-cl::Device get_device(cl::Platform* platform, int* m_err)
+cl::Device get_device(cl::Platform* platform)
 {
+    // Get list of all OpenCL devices on platform
     std::vector<cl::Device> all_devices;
     platform->getDevices(CL_DEVICE_TYPE_ALL, &all_devices);
     if (all_devices.size() == 0)
@@ -289,7 +243,7 @@ cl::Device get_device(cl::Platform* platform, int* m_err)
         std::cerr << "No OpenCL devices found... exiting" << std::endl;
         exit(EXIT_FAILURE);
     }
-    /* let user choose OpenCL device if more than 1 is available */
+    // Let user choose OpenCL device if more than 1 is avialable
     unsigned int device_num = 0;
     if (all_devices.size() > 1)
     {
@@ -311,21 +265,49 @@ cl::Device get_device(cl::Platform* platform, int* m_err)
 }
 
 
-cl::Context get_context(cl::Device* device, int* m_err)
+cl::Context get_context(cl::Device* device)
 {
     return cl::Context({*device});
 }
 
 
-void check_device_info(cl::Device* device, int* m_err)
+cl::Program build_program(std::string source_file, cl::Context* context,
+                          cl::Device* device)
 {
-    /* make sure device has image support */
+    // Get text from kernel file 
+    cl::Program::Sources sources;
+    std::ifstream kernel_file(source_file);
+    std::stringstream buffer;
+    buffer << kernel_file.rdbuf();
+    std::string kernel_source = buffer.str();
+    sources.push_back({kernel_source.c_str(), kernel_source.length()});
+    
+    // Build program from kernel source code
+    cl::Program program(*context, sources);
+    if (program.build({*device}) != CL_SUCCESS)
+    {
+        // Output build errors to file
+        std::string err_str;
+        err_str = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(*device);
+        std::ofstream build_log;
+        build_log.open("kernel_build_log.txt", std::ios::out);
+        build_log << err_str;
+        build_log.close();
+        std::cerr << "Error building kernel. See file kernel_build_log.txt" <<
+                     std::endl;
+    }
+    return program;
+}
+
+
+void check_device_info(cl::Device* device)
+{
+    // Make sure device has image support
     if (!device->getInfo<CL_DEVICE_IMAGE_SUPPORT>())
     {
         std::cerr << "OpenCL device does not have image support" << std::endl;
-        *m_err = 1;
     }
-    /* output device into to stdout */
+    // Output device info to stdout
     std::cout << "DEVICE INFO:" << std::endl;
     cl_uint max_work_item_dims;
     max_work_item_dims = device->getInfo<CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS>();
@@ -347,7 +329,14 @@ cl_uint4* colormap(std::string filename, unsigned int* size)
 {
     std::vector<unsigned char> image;
     unsigned int width, height;
-    lodepng::decode(image, width, height, filename.c_str());
+    // Use lodepng library to decode png colormap
+    unsigned err  = lodepng::decode(image, width, height, filename.c_str());
+    if (err)
+    {
+        std::cerr << "Invalid colormap PNG file" << std::endl;
+        return NULL;
+    }
+    // Add colors from image vector into array of uint vector types
     cl_uint4* cmap = new cl_uint4[width]; 
     for (unsigned int i = 0; i < width; i++)
     {
@@ -362,14 +351,11 @@ cl_uint4* colormap(std::string filename, unsigned int* size)
 
 
 std::string ts(time_t* start_time)
-{
+{   
+    // Return string with time difference from start of execution
     std::stringstream stream;
     stream << difftime(time(0), *start_time);
     return "[" + stream.str() + "s] ";
 }
 
 
-void cleanup()
-{
-
-}
