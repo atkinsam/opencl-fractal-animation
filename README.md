@@ -9,6 +9,12 @@ Fractal animation using C++ and the OpenCL framework
 * make
 * g++
 
+### Tested on
+
+* Ubuntu Linux 16.04
+* Linux Mint 18
+* OS X 10.11 El Capitan
+
 ### Compiling/running this program:
     $ git clone https://github.com/atkinsam/opencl-fractal-animation.git
     $ cd opencl-fractal-animation
