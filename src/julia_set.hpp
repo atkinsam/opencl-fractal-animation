@@ -27,7 +27,6 @@ class Julia_Set
         Julia_Set(size_t size, 
                   cl::ImageFormat* format,
                   cl::Context* context);
-        ~Julia_Set(void);
         void fill_white(cl::CommandQueue* queue);
         void create_kernel(cl::Program* program, 
                            std::string function_name,

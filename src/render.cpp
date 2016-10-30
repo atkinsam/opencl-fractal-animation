@@ -44,7 +44,7 @@ int main(int argc, char** argv)
    
     // Define parameters for fractal animation 
     unsigned int num_frames = 600;
-    float center_re = 0.0;
+    float center_re = 0.3;
     float center_im = 0.0;
     float zoom = 1.0;
     float c_re = 0.0;

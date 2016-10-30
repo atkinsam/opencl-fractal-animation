@@ -38,13 +38,6 @@ Julia_Set::Julia_Set(size_t size,
 }
 
 
-Julia_Set::~Julia_Set(void)
-{
-    // Deallocate memory for resulting image on host memeory
-    delete _result;
-}
-
-
 void Julia_Set::fill_white(cl::CommandQueue* queue)
 {
     // Fill image entirely with white
