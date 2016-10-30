@@ -11,6 +11,7 @@ Fractal animation using C++ and the OpenCL framework
 
 ### Compiling/running this program:
     $ git clone https://github.com/atkinsam/opencl-fractal-animation.git
+    $ cd opencl-fractal-animation
     $ make -C src/
     $ ./render.o <video size in px> <colormap png file>
 
