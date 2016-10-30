@@ -22,8 +22,9 @@ Outputs a 500x500-pixel 60-FPS .mp4 video colored using the colormaps/ocean.png 
 
 See src/render.cpp lines 46-53:
 
-| `num_frames` | Changes number of frames in the 60 FPS video |
+| Parameter    | Property                                     |
 |--------------|----------------------------------------------|
+| `num_frames` | Changes number of frames in the 60 FPS video |
 | `center_re`  | Pan video left/right                         |
 | `center_im`  | Pan video up/down                            |
 | `zoom`       | Zoom in on video                             |
