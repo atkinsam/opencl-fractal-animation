@@ -44,7 +44,7 @@ int main(int argc, char** argv)
    
     // Define parameters for fractal animation 
     unsigned int num_frames = 600;
-    float center_re = 0.3;
+    float center_re = 0.0;
     float center_im = 0.0;
     float zoom = 1.0;
     float c_re = 0.0;
@@ -202,8 +202,8 @@ int main(int argc, char** argv)
     // Create MP4 video from PPM image frames
     // ===============================================================
     std::string mp4_system_call = "ffmpeg -f image2 -r 60 -i ";
-    mp4_system_call += "frames/F%04d.ppm -vcodec mpeg4 -q:v 1 -y ";
-    mp4_system_call += "out.mp4 >> ffmpeg_output.txt";
+    mp4_system_call += "frames/F%04d.ppm -vcodec mpeg4 -q:v 20 -c:v libx264 ";
+    mp4_system_call += "-y out.mp4";
     system(mp4_system_call.c_str());
 
     return EXIT_SUCCESS;
