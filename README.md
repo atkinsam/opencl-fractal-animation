@@ -1,6 +1,8 @@
 # opencl-fractal-animation
 Fractal animation using C++ and the OpenCL framework
 
+See writeup [here](http://atkinsam.com/blog/fractal-animation)
+
 ### Dependencies
 
 * ffmpeg
