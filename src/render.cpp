@@ -261,6 +261,9 @@ cl::Device get_device(cl::Platform* platform)
     {
         std::cout << "Found 1 available OpenCL device" << std::endl;
     }
+    std::cout << "\tUsing device " 
+              << all_devices[device_num].getInfo<CL_DEVICE_NAME>()
+              << std::endl;
     return all_devices[device_num]; 
 }
 
